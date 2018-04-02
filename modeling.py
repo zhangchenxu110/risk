@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
 from sklearn import ensemble
+from sklearn.metrics import roc_auc_score
 import datetime
-
 
 # 先将训练集合测试集合并做预处理
 df_train = pd.read_csv("E:\\risk\\train.csv", sep=',', skiprows=0, low_memory=False)
@@ -210,6 +211,10 @@ param_grid = {'learning_rate': [0.1],  # 学习速率
               'n_estimators': [100]  # 树的个数
               }
 if __name__ == '__main__':
+    # 1、GBRT  特征选择
+    # 2、xgboost
+    # 3、RFR
+    # 4、XTR
     est = GridSearchCV(estimator=ensemble.GradientBoostingRegressor(),
                        param_grid=param_grid,
                        n_jobs=5,
@@ -217,5 +222,36 @@ if __name__ == '__main__':
     d1 = datetime.datetime.now()
     est.fit(x_train, y_train)
     best_param = est.best_params_
+    print("最优参数")
+    best_param
     d2 = datetime.datetime.now()
+    print("调参训练耗时")
     (d2 - d1).seconds
+
+    # 训练GBRT模型
+    d3 = datetime.datetime.now()
+    est = ensemble.GradientBoostingRegressor(learning_rate=0.1,  # 学习速率
+                                             max_depth=2,  # 树的最大深度
+                                             min_samples_split=50,  # 树中包含样本数
+                                             n_estimators=100,  # 树的个数
+                                             random_state=0,
+                                             loss='ls')
+    est.fit(x_train, y_train)
+    d4 = datetime.datetime.now()
+    print("模型训练耗时")
+    (d4 - d3).seconds
+    print("模型得分")
+    est.score(x_test, y_test)
+    print("预测值")
+    predict = est.predict(x_test)
+    predict
+    print("auc得分")
+    auc = roc_auc_score(y_test, predict)
+    auc
+    # 特征选择 Top ten
+    feature_importances = est.feature_importances_
+    feature_importances = 100.0 * (feature_importances / feature_importances.max())
+    indices = np.argsort(feature_importances)[-20:]
+    plt.barh(np.arange(20), feature_importances[indices], color='blue', alpha=.4)
+    plt.yticks(np.arange(20 + 0.25), np.array(train.columns)[indices])
+    _ = plt.xlabel('importance'), plt.title('Top 20')
