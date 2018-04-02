@@ -1,12 +1,12 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
 from sklearn import ensemble
 from sklearn.metrics import roc_auc_score
 import datetime
+from sklearn.linear_model.logistic import LogisticRegression
 
 # 先将训练集合测试集合并做预处理
 df_train = pd.read_csv("E:\\risk\\train.csv", sep=',', skiprows=0, low_memory=False)
@@ -203,12 +203,19 @@ df_all_scaler = pd.DataFrame(MinMaxScaler().fit_transform(df_all), columns=df_al
 train = df_all_scaler[:df_train_row]
 test = df_all_scaler[df_train_row:]
 x_train, x_test, y_train, y_test = train_test_split(train, feature, test_size=0.3, random_state=123)
+x_train.to_csv('E:\\risk\\x_train.csv', na_rep='NA', index=False, sep=',')
+y_train.to_csv('E:\\risk\\y_train.csv', na_rep='NA', index=False, sep=',')
+x_test.to_csv('E:\\risk\\x_test.csv', na_rep='NA', index=False, sep=',')
+y_test.to_csv('E:\\risk\\y_test.csv', na_rep='NA', index=False, sep=',')
 
 # 梯度提升回归数  GBRT 进行拟合
 param_grid = {'learning_rate': [0.1],  # 学习速率
-              'max_depth': [2],  # 树的最大深度
-              'min_samples_split': [50],  # 树中包含样本数
-              'n_estimators': [100]  # 树的个数
+              'max_depth': [5],  # 树的最大深度   #[4,5,6,7,10,50,100]  5最好
+              'min_samples_split': [700],  # 树内部节点再划分所需最小样本数  range(100, 801, 200) 700  [650,700,750] 700
+              'min_samples_leaf': [80],  # 叶子节点最少样本数 range(60, 101, 10) 80
+              'n_estimators': [90],  # 迭代次数 range(60, 121, 10) 90最好
+              'max_features': [8, 9, 10, 11, 12],  # 最大特征数 10最好
+              'subsample': [0.86, 0.9, 0.94]  # 子采样比例 0.9最好
               }
 if __name__ == '__main__':
     # 1、GBRT  特征选择
@@ -218,40 +225,78 @@ if __name__ == '__main__':
     est = GridSearchCV(estimator=ensemble.GradientBoostingRegressor(),
                        param_grid=param_grid,
                        n_jobs=5,
-                       refit=True)
+                       refit=True,
+                       scoring='roc_auc')
     d1 = datetime.datetime.now()
     est.fit(x_train, y_train)
     best_param = est.best_params_
-    print("最优参数")
+    print("最优参数:")
     best_param
     d2 = datetime.datetime.now()
-    print("调参训练耗时")
-    (d2 - d1).seconds
+    print("调参训练耗时: %s秒" % (d2 - d1).seconds)
 
-    # 训练GBRT模型
-    d3 = datetime.datetime.now()
-    est = ensemble.GradientBoostingRegressor(learning_rate=0.1,  # 学习速率
-                                             max_depth=2,  # 树的最大深度
-                                             min_samples_split=50,  # 树中包含样本数
-                                             n_estimators=100,  # 树的个数
-                                             random_state=0,
-                                             loss='ls')
-    est.fit(x_train, y_train)
-    d4 = datetime.datetime.now()
-    print("模型训练耗时")
-    (d4 - d3).seconds
-    print("模型得分")
-    est.score(x_test, y_test)
-    print("预测值")
-    predict = est.predict(x_test)
-    predict
-    print("auc得分")
-    auc = roc_auc_score(y_test, predict)
-    auc
-    # 特征选择 Top ten
-    feature_importances = est.feature_importances_
-    feature_importances = 100.0 * (feature_importances / feature_importances.max())
-    indices = np.argsort(feature_importances)[-20:]
-    plt.barh(np.arange(20), feature_importances[indices], color='blue', alpha=.4)
-    plt.yticks(np.arange(20 + 0.25), np.array(train.columns)[indices])
-    _ = plt.xlabel('importance'), plt.title('Top 20')
+# 训练GBRT模型
+d3 = datetime.datetime.now()
+est = ensemble.GradientBoostingRegressor(learning_rate=0.05,  # 学习速率
+                                         max_depth=5,  # 树的最大深度
+                                         min_samples_split=700,  # 树内部节点再划分所需最小样本数
+                                         min_samples_leaf=80,  # 叶子节点最少样本数
+                                         n_estimators=180,  # 迭代次数
+                                         random_state=10,
+                                         max_features=10,
+                                         subsample=0.9,
+                                         loss='ls')
+est.fit(train, feature)
+d4 = datetime.datetime.now()
+print("模型训练耗时: %s 秒" % ((d4 - d3).seconds))
+print("模型得分:%s" % (est.score(x_test, y_test)))
+predict = est.predict(x_test)
+print("预测值:%s" % (predict))
+auc = roc_auc_score(y_test, predict)
+print("auc得分:%s" % (auc))
+
+# 特征选择 Top ten
+feature_importances = est.feature_importances_
+feature_importances = 100.0 * (feature_importances / feature_importances.max())
+indices = np.argsort(-feature_importances)[:10]
+feature_importances[indices]
+np.array(train.columns)[indices]
+# [100,  84.18718474,  50.1172997 ,  28.39562765,
+#        24.83609584,  22.39816494,  15.84795133,  14.55203613,
+#        14.34053208,  13.63396123]
+# ['credit_score', 'appl_sbm_tm', 'auth_time_before',
+#        'amt_order_info', 'addr_id_recieve_addr', 'account_grade_未知',
+#        'card_type', 'order_count_id', 'user_age', 'sts_order']
+
+# # 再基于这是个特征进行logistics回归
+# train_select = x_train[
+#     ['credit_score', 'appl_sbm_tm', 'auth_time_before', 'amt_order_info', 'addr_id_recieve_addr', 'account_grade_未知', 'card_type', 'order_count_id', 'user_age', 'sts_order']]
+# test_select = x_test[
+#     ['credit_score', 'appl_sbm_tm', 'auth_time_before', 'amt_order_info', 'addr_id_recieve_addr', 'account_grade_未知', 'card_type', 'order_count_id', 'user_age', 'sts_order']]
+# classifier = LogisticRegression()
+# classifier.fit(train_select, y_train)
+# predictions = classifier.predict(test_select)
+# auc_logistic = roc_auc_score(y_test, predictions)
+# print("auc得分:%s" % (auc_logistic))
+
+# 由GBDT做预测
+d5 = datetime.datetime.now()
+est = ensemble.GradientBoostingRegressor(learning_rate=0.05,  # 学习速率
+                                         max_depth=5,  # 树的最大深度
+                                         min_samples_split=700,  # 树内部节点再划分所需最小样本数
+                                         min_samples_leaf=80,  # 叶子节点最少样本数
+                                         n_estimators=180,  # 迭代次数
+                                         random_state=10,
+                                         max_features=10,
+                                         subsample=0.9,
+                                         loss='ls')
+est.fit(train, feature)
+d6 = datetime.datetime.now()
+print("模型训练耗时: %s 秒" % ((d6 - d5).seconds))
+print("模型得分:%s" % (est.score(x_test, y_test)))
+predict_ = est.predict(test)
+# print("预测值:%s" % (predict))
+predict_
+result = pd.DataFrame({'ID': id_test, 'PROB': np.abs(predict_)})
+
+# 训练xgboost模型
