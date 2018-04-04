@@ -203,10 +203,6 @@ df_all_scaler = pd.DataFrame(MinMaxScaler().fit_transform(df_all), columns=df_al
 train = df_all_scaler[:df_train_row]
 test = df_all_scaler[df_train_row:]
 x_train, x_test, y_train, y_test = train_test_split(train, feature, test_size=0.3, random_state=123)
-x_train.to_csv('E:\\risk\\x_train.csv', na_rep='NA', index=False, sep=',')
-y_train.to_csv('E:\\risk\\y_train.csv', na_rep='NA', index=False, sep=',')
-x_test.to_csv('E:\\risk\\x_test.csv', na_rep='NA', index=False, sep=',')
-y_test.to_csv('E:\\risk\\y_test.csv', na_rep='NA', index=False, sep=',')
 
 # 梯度提升回归数  GBRT 进行拟合
 param_grid = {'learning_rate': [0.1],  # 学习速率
@@ -246,7 +242,7 @@ est = ensemble.GradientBoostingRegressor(learning_rate=0.05,  # 学习速率
                                          max_features=10,
                                          subsample=0.9,
                                          loss='ls')
-est.fit(train, feature)
+est.fit(x_train, y_train)
 d4 = datetime.datetime.now()
 print("模型训练耗时: %s 秒" % ((d4 - d3).seconds))
 print("模型得分:%s" % (est.score(x_test, y_test)))
@@ -299,4 +295,83 @@ predict_ = est.predict(test)
 predict_
 result = pd.DataFrame({'ID': id_test, 'PROB': np.abs(predict_)})
 
-# 训练xgboost模型
+# 训练RFR模型
+param_grid = {'max_depth': [70],  # 树的最大深度   #[40,50,60,70,80]  70小样本数
+              'min_samples_split': [50, 60, 70, 80, 200],  # 树内部节点再划分所需最小样本数 60
+              'min_samples_leaf': [70],  # 叶子节点最少样本数 range(60, 101, 10) 70
+              'n_estimators': [100],  # 迭代次数 range(60, 121, 10) 100最好
+              'max_features': [22],  # 最大特征数 range(12, 44, 2) 22最好
+              }
+if __name__ == '__main__':
+    # 1、GBRT  特征选择
+    # 2、xgboost
+    # 3、RFR
+    # 4、XTR
+    est = GridSearchCV(estimator=ensemble.RandomForestRegressor(),
+                       param_grid=param_grid,
+                       n_jobs=3,
+                       refit=True,
+                       scoring='roc_auc')
+    d1 = datetime.datetime.now()
+    est.fit(x_train, y_train)
+    best_param = est.best_params_
+    print("最优参数:")
+    best_param
+    d2 = datetime.datetime.now()
+    print("调参训练耗时: %s秒" % (d2 - d1).seconds)
+rfr = ensemble.RandomForestRegressor(max_depth=70,  # 树的最大深度
+                                     min_samples_split=60,  # 树内部节点再划分所需最小样本数
+                                     min_samples_leaf=70,  # 叶子节点最少样本数
+                                     n_estimators=100,  # 迭代次数
+                                     random_state=10,
+                                     max_features=22)
+d5 = datetime.datetime.now()
+rfr.fit(x_train, y_train)
+d6 = datetime.datetime.now()
+print("模型训练耗时: %s 秒" % ((d6 - d5).seconds))
+print("模型得分:%s" % (rfr.score(x_test, y_test)))
+predict = rfr.predict(x_test)
+print("预测值:%s" % (predict))
+auc = roc_auc_score(y_test, predict)
+print("auc得分:%s" % (auc))
+
+# 训练XTR模型
+param_grid = {'max_depth': [20],  # 树的最大深度   #range(10,101,10)  20
+    'min_samples_split': [440,450,460],  # 树内部节点再划分所需最小样本数  range(450,551,10) 450
+    # 'min_samples_leaf': [70],  # 叶子节点最少样本数 range(60, 101, 10) 70
+    'n_estimators': [190]  # 迭代次数 range(100, 201, 10) 190最好
+    # 'max_features': [22],  # 最大特征数 range(12, 44, 2) 22最好
+}
+if __name__ == '__main__':
+    # 1、GBRT  特征选择
+    # 2、xgboost
+    # 3、RFR
+    # 4、XTR
+    est = GridSearchCV(estimator=ensemble.ExtraTreesRegressor(),
+                       param_grid=param_grid,
+                       n_jobs=3,
+                       refit=True,
+                       scoring='roc_auc')
+    d1 = datetime.datetime.now()
+    est.fit(x_train, y_train)
+    best_param = est.best_params_
+    print("最优参数:")
+    best_param
+    d2 = datetime.datetime.now()
+    print("调参训练耗时: %s秒" % (d2 - d1).seconds)
+
+xtr = ensemble.ExtraTreesRegressor(max_depth=70,  # 树的最大深度
+                                   min_samples_split=60,  # 树内部节点再划分所需最小样本数
+                                   min_samples_leaf=70,  # 叶子节点最少样本数
+                                   n_estimators=100,  # 迭代次数
+                                   random_state=10,
+                                   max_features=22)
+d5 = datetime.datetime.now()
+xtr.fit(x_train, y_train)
+d6 = datetime.datetime.now()
+print("模型训练耗时: %s 秒" % ((d6 - d5).seconds))
+print("模型得分:%s" % (xtr.score(x_test, y_test)))
+predict = xtr.predict(x_test)
+print("预测值:%s" % (predict))
+auc = roc_auc_score(y_test, predict)
+print("auc得分:%s" % (auc))
